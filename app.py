@@ -3,40 +3,47 @@ import pandas as pd
 
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
-st.write("Dynamic break-even analysis incorporating opportunity cost, compound growth, and taxation.")
+st.write("Dynamic break-even analysis incorporating opportunity cost, compound growth, and marginal taxation.")
 
 st.caption("* **PIA (Primary Insurance Amount):** The base monthly benefit you would receive if you claim at your exact full retirement age.*")
 
 # --- Interactive Sidebar Controls ---
 st.sidebar.header("Model Assumptions")
-
 pia = st.sidebar.slider("Primary Insurance Amount (PIA)", 1000, 4000, 2500, 50)
 roi = st.sidebar.slider("Expected annual real return (return over inflation, %)", 0.0, 12.0, 5.0, 0.1) / 100
 
 st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
 
-# NEW: Slider for income tax on the Social Security benefits themselves
-ss_tax_rate = st.sidebar.slider("Effective Income Tax on SS Benefits (%)", 0.0, 40.0, 12.0, 1.0) / 100
+# NEW: Independent marginal tax sliders
+t_62 = st.sidebar.slider("T_62: Tax on Base Age 62 Benefit (%)", 0.0, 40.0, 0.0, 1.0) / 100
+t_gap = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", 0.0, 40.0, 22.0, 1.0) / 100
 
+st.sidebar.divider()
 is_roth = st.sidebar.toggle("Investments held in Roth IRA (Tax-Free)", value=True)
 tax_drag = 0.0
 
 if not is_roth:
-    # Tax drag only applies to the growth of the investments
     tax_drag = st.sidebar.slider("Estimated Tax Drag on Growth (%)", 0.0, 40.0, 15.0, 1.0) / 100
 
 # Calculate effective return after tax drag on the portfolio
 effective_roi = roi * (1 - tax_drag)
 monthly_rate = effective_roi / 12
 
-# Calculate the actual take-home benefit after income taxes
-after_tax_retention = 1.0 - ss_tax_rate
+# --- Core Benefit Math ---
+gross_62 = pia * 0.70
+gross_67 = pia * 1.00
+gross_70 = pia * 1.24
 
-# Benefit scaling rules (Simplified for Age 67) applied to after-tax amounts
-benefit_62 = (pia * 0.70) * after_tax_retention
-benefit_67 = (pia * 1.00) * after_tax_retention
-benefit_70 = (pia * 1.24) * after_tax_retention
+# The base is taxed at T_62
+net_62 = gross_62 * (1 - t_62)
+
+# The extra benefits (the gap) are taxed at T_gap
+gap_67 = gross_67 - gross_62
+net_67 = net_62 + (gap_67 * (1 - t_gap))
+
+gap_70 = gross_70 - gross_62
+net_70 = net_62 + (gap_70 * (1 - t_gap))
 
 # --- Mathematical Engine ---
 ages = list(range(62, 105)) 
@@ -53,11 +60,11 @@ wealth_70 = 0
 
 for age in ages:
     for month in range(12):
-        wealth_62 = wealth_62 * (1 + monthly_rate) + benefit_62
+        wealth_62 = wealth_62 * (1 + monthly_rate) + net_62
         if age >= 67:
-            wealth_67 = wealth_67 * (1 + monthly_rate) + benefit_67
+            wealth_67 = wealth_67 * (1 + monthly_rate) + net_67
         if age >= 70:
-            wealth_70 = wealth_70 * (1 + monthly_rate) + benefit_70
+            wealth_70 = wealth_70 * (1 + monthly_rate) + net_70
             
     chart_data["Claim at 62"].append(wealth_62)
     chart_data["Claim at 67"].append(wealth_67)
