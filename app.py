@@ -29,7 +29,7 @@ st.caption("* **PIA (Primary Insurance Amount):** The base monthly benefit you w
 
 # --- Interactive Sidebar Controls ---
 st.sidebar.header("Model Assumptions")
-pia = st.sidebar.slider("Primary Insurance Amount (PIA)", 1000, 4000, 2500, 50)
+pia = st.sidebar.slider("Primary Insurance Amount (PIA)", 1000, 5000, 2500, 50)
 roi = st.sidebar.slider("Expected annual real return (return over inflation, %)", 0.0, 12.0, 5.0, 0.1) / 100
 
 st.sidebar.divider()
