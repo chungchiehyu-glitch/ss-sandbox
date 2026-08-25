@@ -26,9 +26,9 @@ if not is_roth:
     tax_drag = st.sidebar.slider("Estimated Tax Drag on Growth (%)", 0.0, 40.0, 15.0, 1.0) / 100
 
 st.sidebar.divider()
-st.sidebar.header("Systemic Risk (Insolvency)")
+st.sidebar.header("Systemic Risk (Insolvency 2032)")
 
-# Allows the user to model future government benefit cuts, capped at the statutory 22% maximum per the 2026 Trustees Report
+# Allows the user to model future government benefit cuts, capped at 22%
 insolvency_cut = st.sidebar.slider("Projected Benefit Cut (%)", 0.0, 22.0, 22.0, 1.0) / 100
 cut_age = st.sidebar.slider("Age Cut Takes Effect", 62, 104, 69, 1)
 
