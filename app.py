@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import time
 
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
@@ -122,7 +123,12 @@ st.line_chart(
 st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
+
+# Cache-busting URL generation
+current_time = int(time.time())
+komarev_url = f"https://komarev.com/ghpvc/?username=ss-sandbox-chungchiehyu&label=VISITS&color=eb4034&style=flat&t={current_time}"
+
 st.sidebar.markdown(
-    '<a href="https://github.com/chungchiehyu-glitch/ss-sandbox"><img src="https://komarev.com/ghpvc/?username=ss-sandbox-chungchiehyu&label=VISITS&color=eb4034&style=flat" alt="Visits"></a>', 
+    f'<a href="https://github.com/chungchiehyu-glitch/ss-sandbox"><img src="{komarev_url}" alt="Visits"></a>', 
     unsafe_allow_html=True
 )
