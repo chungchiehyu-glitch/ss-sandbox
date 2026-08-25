@@ -122,4 +122,7 @@ st.line_chart(
 st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
-st.sidebar.markdown("[![Visits](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fss-sandbox-53fawbfrawjjybafggfa8t.streamlit.app&count_bg=%23E63946&title_bg=%231E1E2F&icon=&icon_color=%23E7E7E7&title=Visits&edge_flat=true)](https://hits.seeyoufarm.com)")
+st.sidebar.markdown(
+    '<a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https://ss-sandbox-chungchiehyu&title=Visits" alt="Visits"></a>', 
+    unsafe_allow_html=True
+)
