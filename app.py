@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import math
 
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
@@ -35,14 +36,10 @@ roi = st.sidebar.slider("Expected annual real return (return over inflation, %)"
 st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
 
-# Capture the base tax rate first
 t_62_display = st.sidebar.slider("T_62: Tax on Base Age 62 Benefit (%)", 0.0, 40.0, 0.0, 1.0)
-
-# Enforce T_gap to be at least equal to T_62 (sets the min_value dynamically)
 default_t_gap = max(22.0, t_62_display)
 t_gap_display = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", min_value=t_62_display, max_value=40.0, value=default_t_gap, step=1.0)
 
-# Convert display values to decimals for the math engine
 t_62 = t_62_display / 100
 t_gap = t_gap_display / 100
 
@@ -54,58 +51,70 @@ if not is_roth:
 
 st.sidebar.divider()
 st.sidebar.header("Systemic Risk (Insolvency 2032)")
-
-# Allows the user to model future government benefit cuts, capped at 22%
 insolvency_cut = st.sidebar.slider("Projected Benefit Cut (%)", 0.0, 22.0, 22.0, 1.0) / 100
 cut_age = st.sidebar.slider("Age Cut Takes Effect", 62, 104, 69, 1)
 
-# --- UPDATED SECTION STARTS HERE ---
 
-# Calculate effective return after tax drag on the portfolio
+# --- Core Math Engine ---
 effective_roi = roi * (1 - tax_drag)
-
-# 1. FIXED: Geometric compounding for the monthly rate
 monthly_rate = (1 + effective_roi) ** (1/12) - 1
 
-# --- Core Benefit Math (Pre-Cut) ---
 gross_62 = pia * 0.70
 gross_67 = pia * 1.00
 gross_70 = pia * 1.24
 
-# The base is taxed at T_62
 net_62 = gross_62 * (1 - t_62)
-
-# The extra benefits (the gap) are taxed at T_gap
 gap_67 = gross_67 - gross_62
 net_67 = net_62 + (gap_67 * (1 - t_gap))
-
 gap_70 = gross_70 - gross_62
 net_70 = net_62 + (gap_70 * (1 - t_gap))
 
-# --- Mathematical Engine ---
+# --- Break-Even Calculation (Logarithmic Method) ---
+def get_be_age(age_early, cf_early, age_late, cf_late, r):
+    if r < 0.00001: 
+        if cf_late <= cf_early: return "Never"
+        return age_late + (cf_early * (age_late - age_early)) / (cf_late - cf_early)
+        
+    diff = cf_late - cf_early
+    delay_months = (age_late - age_early) * 12
+    fv_factor = ((1 + r)**delay_months) - 1
+    denominator = diff - (cf_early * fv_factor)
+    
+    # If the denominator is negative, the compounding outpaces the higher benefit forever
+    if denominator <= 0:
+        return "Escape Velocity 🚀"
+        
+    months_to_be = math.log(diff / denominator) / math.log(1 + r)
+    return age_late + (months_to_be / 12)
+
+be_62_67 = get_be_age(62, net_62, 67, net_67, monthly_rate)
+be_62_70 = get_be_age(62, net_62, 70, net_70, monthly_rate)
+be_67_70 = get_be_age(67, net_67, 70, net_70, monthly_rate)
+
+def format_age(val):
+    if isinstance(val, str): return val
+    return f"Age {val:.1f}"
+
+# Display Break-Even Metrics
+st.subheader("Base Break-Even Milestones")
+st.caption("*Calculated prior to any active systemic risk cuts.*")
+cols = st.columns(3)
+cols[0].metric("62 vs 67", format_age(be_62_67))
+cols[1].metric("62 vs 70", format_age(be_62_70))
+cols[2].metric("67 vs 70", format_age(be_67_70))
+st.divider()
+
+# --- Time-Series Engine ---
 ages = list(range(62, 105)) 
-
-chart_data = {
-    "Claim at 62": [],
-    "Claim at 67": [],
-    "Claim at 70": []
-}
-
-wealth_62 = 0
-wealth_67 = 0
-wealth_70 = 0
+chart_data = {"Claim at 62": [], "Claim at 67": [], "Claim at 70": []}
+wealth_62, wealth_67, wealth_70 = 0, 0, 0
 
 for age in ages:
-    # 2. FIXED: Append current balances BEFORE applying the current year's growth and benefits.
-    # This ensures age 67 shows $0, and age 68 shows the $12k accumulated during year 67.
     chart_data["Claim at 62"].append(wealth_62)
     chart_data["Claim at 67"].append(wealth_67)
     chart_data["Claim at 70"].append(wealth_70)
 
-    # Determine if the systemic cut is active for this specific year
     active_cut = insolvency_cut if age >= cut_age else 0.0
-    
-    # Apply the haircut to the net cash flow
     cf_62 = net_62 * (1 - active_cut)
     cf_67 = net_67 * (1 - active_cut)
     cf_70 = net_70 * (1 - active_cut)
@@ -121,17 +130,8 @@ df = pd.DataFrame(chart_data)
 df["Age"] = ages
 df = df.set_index("Age")
 
-# --- Visualization ---
-st.line_chart(
-    df, 
-    width=0, 
-    height=500, 
-    use_container_width=True,
-    x_label="Age",
-    y_label="Cumulative Wealth ($)"
-)
+st.line_chart(df, width=0, height=500, use_container_width=True, x_label="Age", y_label="Cumulative Wealth ($)")
 
-# --- Footer & Feedback ---
 st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
