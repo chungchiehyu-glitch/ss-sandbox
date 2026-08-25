@@ -35,9 +35,16 @@ roi = st.sidebar.slider("Expected annual real return (return over inflation, %)"
 st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
 
-# Independent marginal tax sliders
-t_62 = st.sidebar.slider("T_62: Tax on Base Age 62 Benefit (%)", 0.0, 40.0, 0.0, 1.0) / 100
-t_gap = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", 0.0, 40.0, 22.0, 1.0) / 100
+# Capture the base tax rate first
+t_62_display = st.sidebar.slider("T_62: Tax on Base Age 62 Benefit (%)", 0.0, 40.0, 0.0, 1.0)
+
+# Enforce T_gap to be at least equal to T_62 (sets the min_value dynamically)
+default_t_gap = max(22.0, t_62_display)
+t_gap_display = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", min_value=t_62_display, max_value=40.0, value=default_t_gap, step=1.0)
+
+# Convert display values to decimals for the math engine
+t_62 = t_62_display / 100
+t_gap = t_gap_display / 100
 
 is_roth = st.sidebar.toggle("Investments held in Roth IRA (Tax-Free)", value=True)
 tax_drag = 0.0
