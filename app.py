@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import math
 
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
@@ -54,7 +53,6 @@ st.sidebar.header("Systemic Risk (Insolvency 2032)")
 insolvency_cut = st.sidebar.slider("Projected Benefit Cut (%)", 0.0, 22.0, 22.0, 1.0) / 100
 cut_age = st.sidebar.slider("Age Cut Takes Effect", 62, 104, 69, 1)
 
-
 # --- Core Math Engine ---
 effective_roi = roi * (1 - tax_drag)
 monthly_rate = (1 + effective_roi) ** (1/12) - 1
@@ -69,35 +67,37 @@ net_67 = net_62 + (gap_67 * (1 - t_gap))
 gap_70 = gross_70 - gross_62
 net_70 = net_62 + (gap_70 * (1 - t_gap))
 
-# --- Break-Even Calculation (Logarithmic Method) ---
-def get_be_age(age_early, cf_early, age_late, cf_late, r):
-    if r < 0.00001: 
-        if cf_late <= cf_early: return "Never"
-        return age_late + (cf_early * (age_late - age_early)) / (cf_late - cf_early)
-        
-    diff = cf_late - cf_early
-    delay_months = (age_late - age_early) * 12
-    fv_factor = ((1 + r)**delay_months) - 1
-    denominator = diff - (cf_early * fv_factor)
+# --- Dynamic Break-Even Numerical Scanner ---
+def get_dynamic_be_age(age_early, cf_early_base, age_late, cf_late_base, rate, cut_age_thresh, cut_pct):
+    w_early = 0.0
+    w_late = 0.0
     
-    # If the denominator is negative, the compounding outpaces the higher benefit forever
-    if denominator <= 0:
-        return "Escape Velocity 🚀"
+    # Scan month-by-month up to age 115
+    for current_year in range(age_early, 115):
+        active_cut = cut_pct if current_year >= cut_age_thresh else 0.0
+        cf_early = cf_early_base * (1 - active_cut)
+        cf_late = cf_late_base * (1 - active_cut) if current_year >= age_late else 0.0
         
-    months_to_be = math.log(diff / denominator) / math.log(1 + r)
-    return age_late + (months_to_be / 12)
+        for month in range(1, 13):
+            w_early = w_early * (1 + rate) + cf_early
+            w_late = w_late * (1 + rate) + cf_late
+            
+            # Check if the delayed strategy has overtaken the early strategy
+            if current_year >= age_late and w_late > w_early:
+                return current_year + (month / 12)
+                
+    return "Escape Velocity 🚀"
 
-be_62_67 = get_be_age(62, net_62, 67, net_67, monthly_rate)
-be_62_70 = get_be_age(62, net_62, 70, net_70, monthly_rate)
-be_67_70 = get_be_age(67, net_67, 70, net_70, monthly_rate)
+be_62_67 = get_dynamic_be_age(62, net_62, 67, net_67, monthly_rate, cut_age, insolvency_cut)
+be_62_70 = get_dynamic_be_age(62, net_62, 70, net_70, monthly_rate, cut_age, insolvency_cut)
+be_67_70 = get_dynamic_be_age(67, net_67, 70, net_70, monthly_rate, cut_age, insolvency_cut)
 
 def format_age(val):
     if isinstance(val, str): return val
     return f"Age {val:.1f}"
 
 # Display Break-Even Metrics
-st.subheader("Base Break-Even Milestones")
-st.caption("*Calculated prior to any active systemic risk cuts.*")
+st.subheader("Dynamic Break-Even Milestones")
 cols = st.columns(3)
 cols[0].metric("62 vs 67", format_age(be_62_67))
 cols[1].metric("62 vs 70", format_age(be_62_70))
