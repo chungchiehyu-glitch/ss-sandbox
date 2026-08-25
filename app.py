@@ -123,6 +123,6 @@ st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
 st.sidebar.markdown(
-    '<a href="https://hits.seeyoufarm.com"><img src="https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https://ss-sandbox-chungchiehyu&title=Visits" alt="Visits"></a>', 
+    '<a href="https://github.com/chungchiehyu-glitch/ss-sandbox"><img src="https://komarev.com/ghpvc/?username=ss-sandbox-chungchiehyu&label=VISITS&color=eb4034&style=flat" alt="Visits"></a>', 
     unsafe_allow_html=True
 )
