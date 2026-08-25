@@ -5,6 +5,26 @@ st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
 st.write("Dynamic break-even analysis incorporating opportunity cost, marginal taxation, and systemic risk.")
 
+# --- INSTRUCTIONS EXPANDER ---
+with st.expander("📖 How to use this tool (and why it matters)"):
+    st.markdown("""
+    ### The Core Concept
+    Standard Social Security calculators assume you spend your benefits in a vacuum. This sandbox models the **opportunity cost** of your claiming decision. 
+    
+    If you claim early at 62, you don't have to sell your own investments to fund your life during the 8-year delay to age 70. By leaving your portfolio alone, you are effectively letting that money compound. If that compounding interest outpaces the larger Age 70 payout, you achieve "escape velocity"—a perpetual endowment where the delayed strategy never catches up.
+
+    ### How to Adjust the Variables
+    *   **Model Assumptions:** Set your expected base payout (PIA) and your portfolio's real, inflation-adjusted return. (A 5% real return is a common benchmark for a diversified, factor-tilted equity portfolio).
+    *   **Tax Assumptions (The Marginal Framework):** 
+        *   **T_62:** The effective tax rate on your baseline early benefits.
+        *   **T_gap:** The marginal tax rate on the *extra* benefits you get by delaying to 70 (often taxed higher due to forced RMDs from traditional IRAs pushing up your bracket).
+        *   **Roth IRA Toggle:** If your investments are shielded in a tax-free Roth, leave this **ON**. If they are in a standard brokerage, turn it **OFF** to apply an annual tax drag to your compounding growth.
+    *   **Systemic Risk (2032 Insolvency):** The Social Security Trust Fund is projected to be depleted in the early 2030s. If Congress does not act, standard law dictates an automatic, across-the-board benefit cut of up to 22%. Use these sliders to see how an across-the-board haircut disproportionately damages the Age 70 delayed strategy.
+
+    ### Reading the Chart
+    Look for where the lines cross. That is your **break-even age**. If the Age 62 (dark blue) line stays above the Age 70 (red) line forever, you have achieved mathematical escape velocity.
+    """)
+
 st.caption("* **PIA (Primary Insurance Amount):** The base monthly benefit you would receive if you claim at your exact full retirement age.*")
 
 # --- Interactive Sidebar Controls ---
