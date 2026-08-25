@@ -123,7 +123,5 @@ st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
 
-st.sidebar.markdown(
-    '<a href="https://github.com/chungchiehyu-glitch/ss-sandbox"><img src="https://profile-counter.glitch.me/ss-sandbox-chungchiehyu/count.svg" alt="Visits"></a>', 
-    unsafe_allow_html=True
-)
+# Using standard Markdown instead of raw HTML to bypass Streamlit's security sanitizer
+st.sidebar.markdown("[![Visits](https://profile-counter.glitch.me/ss-sandbox-chungchiehyu/count.svg)](https://github.com/chungchiehyu-glitch/ss-sandbox)")
