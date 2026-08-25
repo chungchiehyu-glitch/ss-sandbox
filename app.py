@@ -123,5 +123,5 @@ st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
 st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
 
-# Using standard Markdown instead of raw HTML to bypass Streamlit's security sanitizer
-st.sidebar.markdown("[![Visits](https://profile-counter.glitch.me/ss-sandbox-chungchiehyu/count.svg)](https://github.com/chungchiehyu-glitch/ss-sandbox)")
+# Using the Komarev API which successfully bypassed the image filter
+st.sidebar.markdown("[![Visits](https://komarev.com/ghpvc/?username=ss-sandbox-chungchiehyu&label=VISITS&color=eb4034&style=flat)](https://github.com/chungchiehyu-glitch/ss-sandbox)")
