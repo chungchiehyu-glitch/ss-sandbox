@@ -31,14 +31,35 @@ st.caption("* **PIA (Primary Insurance Amount):** The base monthly benefit you w
 # --- Interactive Sidebar Controls ---
 st.sidebar.header("Claiming Strategy")
 early_claim = st.sidebar.slider("Early Claim Age", 62, 69, 62, 1)
-# Ensure the late claim slider always starts higher than the early claim slider
-late_claim = st.sidebar.slider("Late Claim Age", early_claim + 1, 70, max(67, early_claim + 1), 1)
+
+# Ensure the late claim slider always has an absolute minimum of 63, but stays above early_claim
+late_claim_min = max(63, early_claim + 1)
+late_claim = st.sidebar.slider("Late Claim Age", late_claim_min, 70, max(67, late_claim_min), 1)
 
 st.sidebar.divider()
 st.sidebar.header("Model Assumptions")
 pia = st.sidebar.slider("Primary Insurance Amount (PIA)", 1000, 5000, 2500, 50)
-# Updated default ROI to 2.37% based on current intermediate TIPS yields
-roi = st.sidebar.slider("Expected annual real return (TIPS proxy, %)", 0.0, 12.0, 2.37, 0.01) / 100
+
+# Session state setup for the Reset Button
+if "roi_val" not in st.session_state:
+    st.session_state.roi_val = 2.37
+
+def reset_roi():
+    st.session_state.roi_val = 2.37
+
+# Cleaner label with a hover tooltip for context
+roi_display = st.sidebar.slider(
+    "Expected annual real return (%)", 
+    0.0, 12.0, 
+    key="roi_val", 
+    step=0.01,
+    help="The default 2.37% reflects the current risk-free real yield on intermediate Treasury Inflation-Protected Securities (TIPS)."
+)
+
+# The reset button
+st.sidebar.button("↺ Reset to TIPS yield (2.37%)", on_click=reset_roi)
+
+roi = roi_display / 100
 
 st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
