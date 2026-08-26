@@ -53,11 +53,11 @@ roi_display = st.sidebar.slider(
     0.0, 12.0, 
     key="roi_val", 
     step=0.01,
-    help="The default 2.37% reflects the current risk-free real yield on intermediate Treasury Inflation-Protected Securities (TIPS)."
+    help="The default 2.37% reflects the current risk-free real yield on a 10-Year Treasury Inflation-Protected Security (TIPS), which closely matches the duration of the delayed claiming gap."
 )
 
 # The reset button
-st.sidebar.button("↺ Reset to TIPS yield (2.37%)", on_click=reset_roi)
+st.sidebar.button("↺ Reset to 10-Year TIPS yield (2.37%)", on_click=reset_roi)
 
 roi = roi_display / 100
 
