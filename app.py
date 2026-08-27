@@ -56,19 +56,11 @@ if filing_status == "Single":
 else:
     st.sidebar.subheader("Strategy 1 (Baseline)")
     h_claim_1 = st.sidebar.slider("Higher Earner Claim (Strategy 1)", 62, 70, 62, 1, key="h_c1")
-    if h_claim_1 > 62:
-        l_claim_1 = st.sidebar.slider("Lower Earner Claim (Strategy 1)", 62, h_claim_1, min(62, h_claim_1), 1, key="l_c1")
-    else:
-        st.sidebar.text("Lower Earner Claim (Strategy 1): Age 62")
-        l_claim_1 = 62
-    
+    l_claim_1 = st.sidebar.slider("Lower Earner Claim (Strategy 1)", 62, 70, 62, 1, key="l_c1")
+
     st.sidebar.subheader("Strategy 2 (Comparison)")
     h_claim_2 = st.sidebar.slider("Higher Earner Claim (Strategy 2)", 62, 70, 70, 1, key="h_c2")
-    if h_claim_2 > 62:
-        l_claim_2 = st.sidebar.slider("Lower Earner Claim (Strategy 2)", 62, h_claim_2, 62, 1, key="l_c2")
-    else:
-        st.sidebar.text("Lower Earner Claim (Strategy 2): Age 62")
-        l_claim_2 = 62
+    l_claim_2 = st.sidebar.slider("Lower Earner Claim (Strategy 2)", 62, 70, 62, 1, key="l_c2")
 
 st.sidebar.divider()
 st.sidebar.header("Model Assumptions")
@@ -280,6 +272,15 @@ def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, 
         # using whatever lead already exists from the invisible pre-history -- this correctly
         # carries forward who was already ahead, without ever reporting a crossing age below the
         # chart's own leftmost point (which would look like a bug even if the number were right).
+        # "found_be" now just tracks whether we've seen ANY lead at all (to distinguish a genuine
+        # tie/never-started case from "Escape Velocity"). It's no longer used to stop early --
+        # we deliberately keep updating be_result on every flip, so it always ends up holding the
+        # LAST lead change. Stopping at the first flip (the old behavior) could report an age as
+        # the "break-even" even when the lead flipped back again later in the simulation --
+        # correct as far as it went, but misleading as a decision-relevant number, since it implied
+        # permanence that the underlying chart didn't actually show. Found via stress testing:
+        # opening up independent claim-age sliders (removing the old lower-earner-claims-no-later
+        # constraint) made multi-flip scenarios common enough to matter (~8% of randomized trials).
         previously_ahead = None
         be_result = "Escape Velocity 🚀"
         found_be = False
@@ -319,7 +320,7 @@ def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, 
                 w_strat2 = w_strat2 * (1 + monthly_rate) + cf_s2
                 if visible:
                     currently_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
-                    if not found_be and currently_ahead is not None:
+                    if currently_ahead is not None:
                         if previously_ahead is not None and currently_ahead != previously_ahead:
                             be_result = l_temp + m / 12
                             found_be = True
