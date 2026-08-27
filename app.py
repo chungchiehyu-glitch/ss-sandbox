@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
@@ -31,14 +32,14 @@ with st.expander("📖 How to use this tool (and why it matters)"):
         ### The Core Concept for Couples
         Standard Social Security calculators evaluate each spouse in a vacuum. This joint sandbox models the **opportunity cost and combined cash flow** of a coordinated spousal claiming strategy. 
 
-        When a couple coordinates their claim, the decision is about managing the **higher earner's delayed credit** alongside the **survivor benefit floor**. If the higher earner delays to age 70, they lock in a permanent, inflation-adjusted income stream that ultimately protects the surviving spouse for the rest of their life.
+        When a couple coordinates their claim, the decision is about managing the **higher earner's delayed credit** alongside the **survivor benefit floor** across asymmetric lifespans.
 
         ### How to Adjust the Joint Variables
         * **Claiming Strategy (Strategy 1 vs. Strategy 2):** Compare two distinct household approaches (e.g., both claiming early at 62 versus the higher earner waiting until 70).
         * **Age Difference & PIA:** Set each spouse's Primary Insurance Amount (PIA) and their exact age offset. A negative age difference means the lower earner is younger.
-        * **Survivor & Mortality:** Model the exact age of the first death to trigger the survivor step-up, transitioning the household from dual benefits down to the single highest earner benefit.
+        * **Survivor & Mortality:** Model individual death ages for both spouses. The chart and simulation automatically truncate when the final surviving spouse passes away.
         * **The Joint Marginal Tax Framework ($T_{base}$ & $T_{gap}$):** Account for Married Filing Jointly brackets and the marginal tax rate applied to incremental delayed benefits.
-        * **Systemic Risk:** Apply projected benefit cuts cleanly across both active and survivor phases.
+        * **Systemic Risk:** Apply projected benefit cuts cleanly across active and survivor phases.
 
         ### Reading the Chart
         Look for where the cumulative wealth lines cross. That is your **joint break-even age**. If the Early strategy line stays above the Delayed strategy line forever without crossing, early compounding wins. If they cross, the delayed strategy achieves dominance past that milestone.
@@ -81,13 +82,15 @@ if filing_status == "Married (Joint)":
     earner_age_diff = st.sidebar.slider("Lower Earner Age Difference (Lower Age - Higher Age)", -25, 25, 0, 1, key="earner_age_diff_val")
     
     st.sidebar.subheader("Survivor & Mortality")
-    first_death_age = st.sidebar.slider("Higher Earner Age at First Death", 70, 104, 85, 1, key="first_death_age_val")
+    h_death_age = st.sidebar.slider("Higher Earner Age at Death", 70, 104, 85, 1, key="h_death_age_val")
+    l_death_age = st.sidebar.slider("Lower Earner Age at Death", 70, 104, 90, 1, key="l_death_age_val")
 else:
     earner_age_diff = 0
     l_pia = 0
-    first_death_age = 105
+    h_death_age = 105
+    l_death_age = 105
 
-# --- FIXED SESSION STATE INITIALIZATION FOR TIPS YIELD ---
+# Session state setup for the Reset Button
 if "roi_val" not in st.session_state:
     st.session_state.roi_val = 2.37
 
@@ -146,12 +149,66 @@ else:
     label_early = f"Strategy 1 (Higher: {h_claim_1}, Lower: {l_claim_1})"
     label_late = f"Strategy 2 (Higher: {h_claim_2}, Lower: {l_claim_2})"
 
-# --- Dynamic Break-Even & Time-Series Simulation ---
-def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, age_diff, h_pia_val, l_pia_val, death_age):
+
+def joint_net_cashflow(h_age, l_age, h_alive, l_alive, h_c, l_c, h_pia_val, l_pia_val, base_h_c, base_l_c, h_pia_base_val, l_pia_base_val, t_base, t_gap_rate, is_baseline_strategy):
+    """
+    Computes the net household Social Security cash flow for one strategy at one point in time.
+
+    KEY FIX: each spouse's claimed benefit amount (h_amt / l_amt) depends ONLY on whether
+    they have reached their own claiming age relative to their own current age -- NOT on
+    whether they are still alive. Alive/dead status is then used separately to decide which
+    combination rule applies (both alive / one alive / survivor). This preserves the deceased
+    higher earner's (larger, especially under delayed claiming) benefit amount so the survivor
+    step-up rule can correctly select max(own benefit, deceased spouse's benefit).
+    """
+    # Benefit amount each person WOULD be receiving, based purely on age vs. claim age.
+    h_amt = h_pia_val * get_pia_multiplier(h_c) if h_age >= h_c else 0.0
+    l_amt = l_pia_val * get_pia_multiplier(l_c) if l_age >= l_c else 0.0
+
+    if h_alive and l_alive:
+        gross = h_amt + l_amt
+        if is_baseline_strategy:
+            net = gross * (1 - t_base)
+        else:
+            base_h_amt = h_pia_base_val * get_pia_multiplier(base_h_c) if h_age >= base_h_c else 0.0
+            base_l_amt = l_pia_base_val * get_pia_multiplier(base_l_c) if l_age >= base_l_c else 0.0
+            base_gross = base_h_amt + base_l_amt
+            base_net = base_gross * (1 - t_base)
+            if gross > base_gross:
+                net = base_net + (gross - base_gross) * (1 - t_gap_rate)
+            else:
+                net = gross * (1 - t_base)
+    elif h_alive and not l_alive:
+        # Lower earner deceased: higher earner keeps their own benefit
+        # (survivor step-up doesn't apply since higher earner's own is already the larger amount).
+        net = h_amt * (1 - t_base)
+    elif (not h_alive) and l_alive:
+        # SURVIVOR CASE (the bug): use the higher earner's actual claimed amount (h_amt),
+        # computed independent of their alive status, not zero.
+        survivor_amt = max(h_amt, l_amt)
+        if is_baseline_strategy:
+            net = survivor_amt * (1 - t_base)
+        else:
+            base_h_amt = h_pia_base_val * get_pia_multiplier(base_h_c) if h_age >= base_h_c else 0.0
+            base_l_amt = l_pia_base_val * get_pia_multiplier(base_l_c) if l_age >= base_l_c else 0.0
+            base_survivor_amt = max(base_h_amt, base_l_amt)
+            if survivor_amt > base_survivor_amt:
+                net = (base_survivor_amt * (1 - t_base)) + ((survivor_amt - base_survivor_amt) * (1 - t_gap_rate))
+            else:
+                net = survivor_amt * (1 - t_base)
+    else:
+        net = 0.0
+
+    return net
+
+
+# --- Dynamic Break-Even & Time-Series Simulation with Independent Corrected Slopes ---
+def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, age_diff, h_pia_val, l_pia_val, h_death, l_death):
     start_age = 60 if is_joint else 62
-    ages = list(range(start_age, 105))
     
     if not is_joint:
+        end_age = 104
+        ages = list(range(start_age, end_age + 1))
         w_early, w_late = 0.0, 0.0
         chart_rows = []
         
@@ -176,6 +233,7 @@ def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, 
         be_result = "Escape Velocity 🚀"
         w_e_test, w_l_test = 0.0, 0.0
         found_be = False
+        
         for age in ages:
             cut = insolvency_cut if age >= cut_age else 0.0
             cf_e = n_early * (1 - cut) if age >= early_claim else 0.0
@@ -185,111 +243,101 @@ def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, 
                 w_e_test = w_e_test * (1 + monthly_rate) + cf_e
                 w_l_test = w_l_test * (1 + monthly_rate) + cf_l
                 curr_age = age + (m / 12)
-                if not found_be and curr_age >= 72.0:
-                    if pe <= pl and w_l_test > w_e_test:
+                
+                if not found_be and curr_age > float(late_claim):
+                    if pe >= pl and w_l_test > w_e_test:
                         be_result = curr_age
                         found_be = True
                         
         return df_out, be_result
 
     else:
+        max_lower_death_age = min(104, l_death)
+        max_higher_death_age_equivalent = min(104, h_death + age_diff)
+        max_sim_lower_age = max(max_lower_death_age, max_higher_death_age_equivalent)
+        
+        ages = list(range(start_age, max_sim_lower_age + 1))
+        
         w_strat1, w_strat2 = 0.0, 0.0
         h_start_age = start_age - age_diff
-        
+
         # Historical warmup loop before lower earner hits start_age (age 60)
         if h_start_age > 60:
             for h_temp in range(60, h_start_age):
                 l_temp = h_temp + age_diff
                 cut_t = insolvency_cut if h_temp >= cut_age else 0.0
-                is_surv_t = h_temp >= death_age
                 
-                h_b1_t = (h_pia_val * get_pia_multiplier(h_c1)) if h_temp >= h_c1 else 0.0
-                l_b1_t = (l_pia_val * get_pia_multiplier(l_c1)) if l_temp >= l_c1 else 0.0
+                h_alive = h_temp < h_death
+                l_alive = l_temp < l_death
                 
-                if not is_surv_t:
-                    net_s1_t = (h_b1_t + l_b1_t) * (1 - t_62)
-                else:
-                    net_s1_t = max(h_b1_t, l_b1_t) * (1 - t_62)
+                if not h_alive and not l_alive:
+                    continue
                 
-                h_b2_t = (h_pia_val * get_pia_multiplier(h_c2)) if h_temp >= h_c2 else 0.0
-                l_b2_t = (l_pia_val * get_pia_multiplier(l_c2)) if l_temp >= l_c2 else 0.0
-                
-                if not is_surv_t:
-                    gross_s2_t = h_b2_t + l_b2_t
-                    base_s1_pot_t = (h_pia_val * get_pia_multiplier(h_c1)) + (l_pia_val * get_pia_multiplier(l_c1))
-                    if gross_s2_t > base_s1_pot_t:
-                        net_s2_t = net_s1_t + (gross_s2_t - base_s1_pot_t) * (1 - t_gap)
-                    else:
-                        net_s2_t = gross_s2_t * (1 - t_62)
-                else:
-                    surv_s2_t = max(h_b2_t, l_b2_t)
-                    base_s1_surv_pot_t = max((h_pia_val * get_pia_multiplier(h_c1)), (l_pia_val * get_pia_multiplier(l_c1)))
-                    if surv_s2_t > base_s1_surv_pot_t:
-                        net_s2_t = (base_s1_surv_pot_t * (1 - t_62)) + ((surv_s2_t - base_s1_surv_pot_t) * (1 - t_gap))
-                    else:
-                        net_s2_t = surv_s2_t * (1 - t_62)
-                
-                cf_s1_t = net_s1_t * (1 - cut_t)
-                cf_s2_t = net_s2_t * (1 - cut_t)
+                cf_s1_t = joint_net_cashflow(
+                    h_temp, l_temp, h_alive, l_alive, h_c1, l_c1, h_pia_val, l_pia_val,
+                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=True
+                ) * (1 - cut_t)
+
+                cf_s2_t = joint_net_cashflow(
+                    h_temp, l_temp, h_alive, l_alive, h_c2, l_c2, h_pia_val, l_pia_val,
+                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=False
+                ) * (1 - cut_t)
                 
                 for _ in range(12):
                     w_strat1 = w_strat1 * (1 + monthly_rate) + cf_s1_t
                     w_strat2 = w_strat2 * (1 + monthly_rate) + cf_s2_t
 
-        chart_rows = []
+        # Crossing detection: track WHICH strategy currently leads (state-transition based),
+        # not a calendar-age gate -- a fixed gate can always be outrun by an extreme enough
+        # age gap (found via stress testing: a hardcoded +1yr gate, then even a 0yr gate,
+        # both eventually missed a real crossing for a big enough |age_diff|).
+        # The lead as of the START of the visible window (age 60, after warmup) seeds
+        # "previously_ahead" -- this correctly carries forward whichever strategy was already
+        # ahead from the invisible pre-history, without ever reporting a crossing age below 60
+        # (age 60 is the leftmost point on the chart, so a "crossing" the user can't see on the
+        # graph would look like a bug, even though the underlying number would be correct).
+        previously_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
         be_result = "Escape Velocity 🚀"
         found_be = False
-        
-        max_start = max(l_c1, l_c2, h_c1 + age_diff, h_c2 + age_diff)
+
+        def _check_crossing(cur_age):
+            nonlocal previously_ahead, be_result, found_be
+            currently_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
+            if not found_be and currently_ahead is not None:
+                if previously_ahead is not None and currently_ahead != previously_ahead:
+                    be_result = cur_age
+                    found_be = True
+                previously_ahead = currently_ahead
+
+        chart_rows = []
         
         for l_age in ages:
             chart_rows.append({"Lower Earner Age": l_age, label_early: w_strat1, label_late: w_strat2})
             
             h_age = l_age - age_diff
             cut = insolvency_cut if h_age >= cut_age else 0.0
-            is_survivor_phase = h_age >= death_age
             
-            # --- Strategy 1 Cash Flows (Uses c1) ---
-            h_b1 = (h_pia_val * get_pia_multiplier(h_c1)) if h_age >= h_c1 else 0.0
-            l_b1 = (l_pia_val * get_pia_multiplier(l_c1)) if l_age >= l_c1 else 0.0
+            h_alive = h_age < h_death
+            l_alive = l_age < l_death
             
-            if not is_survivor_phase:
-                net_s1 = (h_b1 + l_b1) * (1 - t_62)
+            if not h_alive and not l_alive:
+                cf_s1, cf_s2 = 0.0, 0.0
             else:
-                net_s1 = max(h_b1, l_b1) * (1 - t_62)
-
-            # --- Strategy 2 Cash Flows (Uses c2) ---
-            h_b2 = (h_pia_val * get_pia_multiplier(h_c2)) if h_age >= h_c2 else 0.0
-            l_b2 = (l_pia_val * get_pia_multiplier(l_c2)) if l_age >= l_c2 else 0.0
-            
-            if not is_survivor_phase:
-                gross_s2 = h_b2 + l_b2
-                base_s1_potential = (h_pia_val * get_pia_multiplier(h_c1)) + (l_pia_val * get_pia_multiplier(l_c1))
-                if gross_s2 > base_s1_potential:
-                    net_s2 = net_s1 + (gross_s2 - base_s1_potential) * (1 - t_gap)
-                else:
-                    net_s2 = gross_s2 * (1 - t_62)
-            else:
-                surv_s2 = max(h_b2, l_b2)
-                base_s1_surv_potential = max((h_pia_val * get_pia_multiplier(h_c1)), (l_pia_val * get_pia_multiplier(l_c1)))
-                if surv_s2 > base_s1_surv_potential:
-                    net_s2 = (base_s1_surv_potential * (1 - t_62)) + ((surv_s2 - base_s1_surv_potential) * (1 - t_gap))
-                else:
-                    net_s2 = surv_s2 * (1 - t_62)
-
-            cf_s1 = net_s1 * (1 - cut)
-            cf_s2 = net_s2 * (1 - cut)
+                net_s1 = joint_net_cashflow(
+                    h_age, l_age, h_alive, l_alive, h_c1, l_c1, h_pia_val, l_pia_val,
+                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=True
+                )
+                net_s2 = joint_net_cashflow(
+                    h_age, l_age, h_alive, l_alive, h_c2, l_c2, h_pia_val, l_pia_val,
+                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=False
+                )
+                cf_s1 = net_s1 * (1 - cut)
+                cf_s2 = net_s2 * (1 - cut)
             
             for m in range(1, 13):
-                prev_s1, prev_s2 = w_strat1, w_strat2
                 w_strat1 = w_strat1 * (1 + monthly_rate) + cf_s1
                 w_strat2 = w_strat2 * (1 + monthly_rate) + cf_s2
-                
-                current_exact_age = l_age + (m / 12)
-                if not found_be and current_exact_age >= (max_start + 1.0):
-                    if (prev_s1 <= prev_s2 and w_strat1 > w_strat2) or (prev_s2 <= prev_s1 and w_strat2 > w_strat1):
-                        be_result = current_exact_age
-                        found_be = True
+                _check_crossing(l_age + (m / 12))
                     
         df_out = pd.DataFrame(chart_rows).set_index("Lower Earner Age")
         return df_out, be_result
@@ -305,7 +353,8 @@ df_chart, be_age = run_simulation(
     age_diff=earner_age_diff,
     h_pia_val=h_pia,
     l_pia_val=l_pia,
-    death_age=first_death_age
+    h_death=h_death_age,
+    l_death=l_death_age
 )
 
 def format_age(val):
@@ -319,7 +368,43 @@ st.metric(f"{label_early} vs {label_late}", format_age(be_age))
 st.divider()
 
 chart_x_label = "Lower Earner Age" if filing_status == "Married (Joint)" else "Age"
-st.line_chart(df_chart, width=0, height=500, use_container_width=True, x_label=chart_x_label, y_label="Cumulative Wealth ($)")
+
+# --- Chart rendering (Altair, for aspect-ratio / dual-axis-label / full-legend-text control) ---
+plot_df = df_chart.reset_index()
+x_col = plot_df.columns[0]  # "Lower Earner Age" or "Age"
+series_cols = [c for c in plot_df.columns if c != x_col]
+
+long_df = plot_df.melt(id_vars=[x_col], value_vars=series_cols, var_name="Strategy", value_name="Cumulative Wealth ($)")
+
+if filing_status == "Married (Joint)":
+    # Show both Lower Earner Age and Higher Earner Age on each x-axis tick, computed
+    # arithmetically from the numeric x value so line positions/order stay correct.
+    x_axis = alt.Axis(
+        title="Lower Earner Age / Higher Earner Age",
+        labelExpr=f"datum.value + ' / ' + (datum.value - ({earner_age_diff}))",
+        values=sorted(plot_df[x_col].unique().tolist()),  # force a tick for every year, not just min/max
+    )
+else:
+    x_axis = alt.Axis(
+        title=chart_x_label,
+        values=sorted(plot_df[x_col].unique().tolist()),
+    )
+
+chart = (
+    alt.Chart(long_df)
+    .mark_line()
+    .encode(
+        x=alt.X(f"{x_col}:Q", axis=x_axis),
+        y=alt.Y("Cumulative Wealth ($):Q", title="Cumulative Wealth ($)"),
+        color=alt.Color(
+            "Strategy:N",
+            legend=alt.Legend(title=None, labelLimit=0, symbolLimit=0)  # labelLimit=0 -> no legend text truncation
+        ),
+    )
+    .properties(width=1260, height=600)  # 30% narrower than the previous 1800
+)
+
+st.altair_chart(chart, use_container_width=False)
 
 st.sidebar.divider()
 st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
