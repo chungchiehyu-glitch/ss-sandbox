@@ -39,20 +39,20 @@ if filing_status == "Married (Joint)":
     else:
         age_of_first_death = st.sidebar.number_input("Age of Spouse at First Death", value=83, step=1)
 
-# TIPS yield baseline integration
-tips_yield = 2.37  # Current benchmark reference point
-if "real_return_val" not in st.session_state:
-    st.session_state.real_return_val = 5.0
+# Current benchmark reference point for 10-Year TIPS yield
+tips_yield = 2.34
+
+if "real_return_slider" not in st.session_state:
+    st.session_state.real_return_slider = 5.0
 
 real_return_input = st.sidebar.number_input(
     "Expected annual real return (%)", 
-    value=st.session_state.real_return_val, 
     step=0.1, 
     key="real_return_slider"
 )
 
 if st.sidebar.button(f"🔄 Reset to 10-Year TIPS yield ({tips_yield}%)"):
-    st.session_state.real_return_val = tips_yield
+    st.session_state.real_return_slider = tips_yield
     st.rerun()
 
 real_return = real_return_input / 100
