@@ -64,7 +64,6 @@ else:
     st.sidebar.subheader("Strategy 2 (Comparison)")
     h_claim_2 = st.sidebar.slider("Higher Earner Claim (Strategy 2)", 62, 70, 70, 1, key="h_c2")
     if h_claim_2 > 62:
-        # Default lower earner claim set to 62
         l_claim_2 = st.sidebar.slider("Lower Earner Claim (Strategy 2)", 62, h_claim_2, 62, 1, key="l_c2")
     else:
         st.sidebar.text("Lower Earner Claim (Strategy 2): Age 62")
@@ -88,7 +87,7 @@ else:
     l_pia = 0
     first_death_age = 105
 
-# Session state setup for the Reset Button
+# --- FIXED SESSION STATE INITIALIZATION FOR TIPS YIELD ---
 if "roi_val" not in st.session_state:
     st.session_state.roi_val = 2.37
 
