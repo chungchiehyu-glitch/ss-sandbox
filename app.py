@@ -1,162 +1,153 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
+import numpy as np
+import altair as alt
 
-st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
+# --- PAGE CONFIG & UI ---
+st.set_page_config(page_title="Social Security Break-Even Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
-st.write("Dynamic break-even analysis incorporating opportunity cost, marginal taxation, and systemic risk.")
+st.write("Dynamic joint retirement modeling incorporating independent claiming strategies, widow's limits, tax bracket compression, and systemic risk.")
 
-# --- INSTRUCTIONS EXPANDER ---
-with st.expander("📖 How to use this tool (and why it matters)"):
-    st.markdown("""
-    ### The Core Concept
-    Standard Social Security calculators assume you spend your benefits in a vacuum. This sandbox models the **opportunity cost** of your claiming decision. 
-    
-    If you claim early, you don't have to sell your own investments to fund your life during the delay years. By leaving your portfolio alone, you are effectively letting that money compound. If that compounding interest outpaces the larger delayed payout, you achieve "escape velocity"—a perpetual endowment where the delayed strategy never catches up.
+# --- SIDEBAR INPUTS ---
+filing_status = st.sidebar.radio("Filing Status", ["Single", "Married (Joint)"])
 
-    ### How to Adjust the Variables
-    *   **Claiming Strategy:** Choose any two ages to compare (e.g., 62 vs 65, or 65 vs 70).
-    *   **Model Assumptions:** Set your expected base payout (PIA) and your portfolio's real return. The default yield reflects current real rates on intermediate Treasury Inflation-Protected Securities (TIPS), representing a risk-free benchmark.
-    *   **Tax Assumptions (The Marginal Framework):** 
-        *   **T_base:** The effective tax rate on your baseline early benefits.
-        *   **T_gap:** The marginal tax rate on the *extra* benefits you get by delaying. 
-        *   **Roth IRA Toggle:** If your investments are shielded in a tax-free Roth, leave this **ON**. If they are in a standard brokerage, turn it **OFF** to apply an annual tax drag to your compounding growth.
-    *   **Systemic Risk (Insolvency 2032):** The Social Security Trust Fund is projected to be depleted in the early 2030s. If Congress does not act, standard law dictates an automatic, across-the-board benefit cut of up to 22%.
-
-    ### Reading the Chart
-    Look for where the lines cross. That is your **break-even age**. If the Early (dark blue) line stays above the Late (red) line forever, you have achieved mathematical escape velocity.
-    """)
-
-st.caption("* **PIA (Primary Insurance Amount):** The base monthly benefit you would receive if you claim at your exact full retirement age.*")
-
-# --- Interactive Sidebar Controls ---
 st.sidebar.header("Claiming Strategy")
-early_claim = st.sidebar.slider("Early Claim Age", 62, 69, 62, 1)
+if filing_status == "Single":
+    claim_age_1 = st.sidebar.slider("Claim Age Strategy 1", 62, 70, 62)
+    claim_age_2 = st.sidebar.slider("Claim Age Strategy 2", 62, 70, 67)
+else:
+    st.sidebar.subheader("Strategy 1 (Baseline)")
+    p1_claim_1 = st.sidebar.slider("Primary Claim (Strategy 1)", 62, 70, 62)
+    p2_claim_1 = st.sidebar.slider("Spouse Claim (Strategy 1)", 62, 70, 62)
+    
+    st.sidebar.subheader("Strategy 2 (Comparison)")
+    p1_claim_2 = st.sidebar.slider("Primary Claim (Strategy 2)", 62, 70, 70)
+    p2_claim_2 = st.sidebar.slider("Spouse Claim (Strategy 2)", 62, 70, 67)
 
-# Ensure the late claim slider always has an absolute minimum of 63, but stays above early_claim
-late_claim_min = max(63, early_claim + 1)
-late_claim = st.sidebar.slider("Late Claim Age", late_claim_min, 70, max(67, late_claim_min), 1)
-
-st.sidebar.divider()
 st.sidebar.header("Model Assumptions")
-pia = st.sidebar.slider("Primary Insurance Amount (PIA)", 1000, 5000, 2500, 50)
+pia_1 = st.sidebar.number_input("Primary PIA ($/mo)", value=2500, step=100)
 
-# Session state setup for the Reset Button
-if "roi_val" not in st.session_state:
-    st.session_state.roi_val = 2.37
+if filing_status == "Married (Joint)":
+    pia_2 = st.sidebar.number_input("Spouse PIA ($/mo) [Must be <= Primary]", value=1200, step=100)
+    spouse_age_diff = st.sidebar.number_input("Spouse Age Difference (Spouse Age - Primary Age)", value=0, step=1)
+    
+    st.sidebar.subheader("Mortality & Survivor Settings")
+    first_death_person = st.sidebar.selectbox("Who Passes Away First?", ["Primary Earner", "Spouse"])
+    
+    if first_death_person == "Primary Earner":
+        age_of_first_death = st.sidebar.number_input("Age of Primary Earner at First Death", value=85, step=1)
+    else:
+        age_of_first_death = st.sidebar.number_input("Age of Spouse at First Death", value=83, step=1)
 
-def reset_roi():
-    st.session_state.roi_val = 2.37
+# TIPS yield baseline integration (Initialize session state BEFORE the widget)
+tips_yield = 2.34
+if "real_return_slider" not in st.session_state:
+    st.session_state.real_return_slider = 5.0
 
-# Cleaner label with a hover tooltip for context
-roi_display = st.sidebar.slider(
+# Reset button handler modifies state before widget instantiation
+if st.sidebar.button(f"🔄 Reset to 10-Year TIPS yield ({tips_yield}%)"):
+    st.session_state.real_return_slider = tips_yield
+    st.rerun()
+
+real_return_input = st.sidebar.number_input(
     "Expected annual real return (%)", 
-    0.0, 12.0, 
-    key="roi_val", 
-    step=0.01,
-    help="The default 2.37% reflects the current risk-free real yield on a 10-Year Treasury Inflation-Protected Security (TIPS), which closely matches the duration of the delayed claiming gap."
+    step=0.1, 
+    key="real_return_slider"
 )
 
-# The reset button
-st.sidebar.button("↺ Reset to 10-Year TIPS yield (2.37%)", on_click=reset_roi)
+real_return = real_return_input / 100
 
-roi = roi_display / 100
-
-st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
-t_62_display = st.sidebar.slider("T_base: Tax on Base Early Benefit (%)", 0.0, 40.0, 0.0, 1.0)
-default_t_gap = max(22.0, t_62_display)
-t_gap_display = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", min_value=t_62_display, max_value=40.0, value=default_t_gap, step=1.0)
+t_base = st.sidebar.number_input("T_base: Tax on Base Early Benefit (%)", value=8.0, step=0.5) / 100
+t_gap = st.sidebar.number_input("T_gap: Tax on Extra Benefit (The Gap) (%)", value=18.0, step=0.5) / 100
+roth_mode = st.sidebar.toggle("Investments held in Roth IRA (Tax-Free)", value=True)
 
-t_62 = t_62_display / 100
-t_gap = t_gap_display / 100
-
-is_roth = st.sidebar.toggle("Investments held in Roth IRA (Tax-Free)", value=True)
-tax_drag = 0.0
-
-if not is_roth:
-    tax_drag = st.sidebar.slider("Estimated Tax Drag on Growth (%)", 0.0, 40.0, 15.0, 1.0) / 100
-
-st.sidebar.divider()
 st.sidebar.header("Systemic Risk (Insolvency 2032)")
-insolvency_cut = st.sidebar.slider("Projected Benefit Cut (%)", 0.0, 22.0, 22.0, 1.0) / 100
-cut_age = st.sidebar.slider("Age Cut Takes Effect", 62, 104, 69, 1)
+benefit_cut = st.sidebar.number_input("Projected Benefit Cut (%)", value=11.0, step=1.0) / 100
+cut_age = st.sidebar.number_input("Primary Age Cut Takes Effect", value=69, step=1)
 
-# --- Core Math Engine ---
-def get_pia_multiplier(age):
-    # Standard SSA multipliers assuming a Full Retirement Age of 67
-    multipliers = {
-        62: 0.70, 63: 0.75, 64: 0.80, 65: 0.8667, 
-        66: 0.9333, 67: 1.00, 68: 1.08, 69: 1.16, 70: 1.24
-    }
-    return multipliers.get(age, 1.0)
+# --- BENEFIT & WIDOW'S LIMIT CALCULATION LOGIC ---
+def get_monthly_benefit(pia, claim_age, fra=67):
+    months_diff = (claim_age - fra) * 12
+    if months_diff < 0:
+        reduction_months = abs(months_diff)
+        if reduction_months <= 36:
+            factor = 1 - (reduction_months * (5/9 / 100))
+        else:
+            factor = 1 - (36 * (5/9 / 100) + (reduction_months - 36) * (5/12 / 100))
+    else:
+        factor = 1 + (months_diff * (2/3 / 100))
+    return pia * max(0.5, factor)
 
-effective_roi = roi * (1 - tax_drag)
-monthly_rate = (1 + effective_roi) ** (1/12) - 1
-
-# Dynamically calculate payouts based on user-selected ages
-gross_early = pia * get_pia_multiplier(early_claim)
-gross_late = pia * get_pia_multiplier(late_claim)
-
-net_early = gross_early * (1 - t_62)
-gap_late = gross_late - gross_early
-net_late = net_early + (gap_late * (1 - t_gap))
-
-# --- Dynamic Break-Even Numerical Scanner ---
-def get_dynamic_be_age(age_early, cf_early_base, age_late, cf_late_base, rate, cut_age_thresh, cut_pct):
-    w_early = 0.0
-    w_late = 0.0
+def calculate_joint_lifetime_wealth(p1_claim, p2_claim, pia_p1, pia_p2, age_diff, death_person, death_age):
+    ages = np.arange(60, 101, 1/12)
+    portfolio_balance = 0
     
-    for current_year in range(age_early, 115):
-        active_cut = cut_pct if current_year >= cut_age_thresh else 0.0
-        cf_early = cf_early_base * (1 - active_cut)
-        cf_late = cf_late_base * (1 - active_cut) if current_year >= age_late else 0.0
+    p1_benefit_full = get_monthly_benefit(pia_p1, p1_claim)
+    p2_benefit_full = get_monthly_benefit(pia_p2, p2_claim)
+    
+    survivor_cap = max(p1_benefit_full, 0.825 * pia_p1) if p1_claim >= 67 else p1_benefit_full
+    
+    monthly_growth = (1 + real_return)**(1/12) - 1
+    wealth_path = []
+    
+    for age in ages:
+        spouse_age = age + age_diff
         
-        for month in range(1, 13):
-            w_early = w_early * (1 + rate) + cf_early
-            w_late = w_late * (1 + rate) + cf_late
+        p1_active = p1_benefit_full if age >= p1_claim else 0
+        p2_active = p2_benefit_full if spouse_age >= p2_claim else 0
+        
+        is_survivor_phase = False
+        if filing_status == "Married (Joint)":
+            if death_person == "Primary Earner":
+                if age >= death_age:
+                    is_survivor_phase = True
+                    p1_active = 0
+                    p2_active = max(p2_active, survivor_cap)
+            else:
+                if spouse_age >= death_age:
+                    is_survivor_phase = True
+                    p2_active = 0  
+                    
+        monthly_household_benefit = p1_active + p2_active
+        
+        if age >= cut_age:
+            monthly_household_benefit *= (1 - benefit_cut)
             
-            if current_year >= age_late and w_late > w_early:
-                return current_year + (month / 12)
-                
-    return "Escape Velocity 🚀"
+        effective_tax = t_base if not is_survivor_phase else (t_base * 1.35)
+        after_tax_benefit = monthly_household_benefit * (1 - effective_tax)
+        
+        portfolio_balance = portfolio_balance * (1 + monthly_growth) + after_tax_benefit
+        wealth_path.append(portfolio_balance)
+        
+    return ages, np.array(wealth_path)
 
-be_age = get_dynamic_be_age(early_claim, net_early, late_claim, net_late, monthly_rate, cut_age, insolvency_cut)
+# --- EXECUTE STRATEGIES ---
+ages = np.arange(60, 101, 1/12)
+if filing_status == "Single":
+    _, wealth_1 = calculate_joint_lifetime_wealth(claim_age_1, 62, 2500, 0, 0, "Primary Earner", 150)
+    _, wealth_2 = calculate_joint_lifetime_wealth(claim_age_2, 62, 2500, 0, 0, "Primary Earner", 150)
+    label_1, label_2 = f"Claim at {claim_age_1}", f"Claim at {claim_age_2}"
+else:
+    _, wealth_1 = calculate_joint_lifetime_wealth(p1_claim_1, p2_claim_1, pia_1, pia_2, spouse_age_diff, first_death_person, age_of_first_death)
+    _, wealth_2 = calculate_joint_lifetime_wealth(p1_claim_2, p2_claim_2, pia_1, pia_2, spouse_age_diff, first_death_person, age_of_first_death)
+    label_1 = f"Strategy 1 (P1: {p1_claim_1}, Spouse: {p2_claim_1})"
+    label_2 = f"Strategy 2 (P1: {p1_claim_2}, Spouse: {p2_claim_2})"
 
-def format_age(val):
-    if isinstance(val, str): return val
-    return f"Age {val:.1f}"
+# --- CHARTING ---
+chart_data = pd.DataFrame({
+    "Age": ages,
+    label_1: wealth_1,
+    label_2: wealth_2
+})
 
-# Display Break-Even Metric
-st.subheader("Dynamic Break-Even Milestone")
-st.metric(f"Claim at {early_claim} vs Claim at {late_claim}", format_age(be_age))
-st.divider()
+chart_melted = chart_data.melt(id_vars=["Age"], var_name="Strategy", value_name="Cumulative Wealth")
 
-# --- Time-Series Engine ---
-ages = list(range(early_claim, 105)) 
-chart_data = {
-    f"Claim at {early_claim}": [], 
-    f"Claim at {late_claim}": []
-}
-wealth_early, wealth_late = 0, 0
+chart = alt.Chart(chart_melted).mark_line().encode(
+    x=alt.X("Age", title="Primary Earner Age"),
+    y=alt.Y("Cumulative Wealth", title="Cumulative Household Wealth ($)"),
+    color=alt.Color("Strategy", legend=alt.Legend(orient="bottom", direction="vertical"))
+).properties(height=500).interactive()
 
-for age in ages:
-    chart_data[f"Claim at {early_claim}"].append(wealth_early)
-    chart_data[f"Claim at {late_claim}"].append(wealth_late)
-
-    active_cut = insolvency_cut if age >= cut_age else 0.0
-    cf_early = net_early * (1 - active_cut)
-    cf_late = net_late * (1 - active_cut) if age >= late_claim else 0.0
-    
-    for month in range(12):
-        wealth_early = wealth_early * (1 + monthly_rate) + cf_early
-        wealth_late = wealth_late * (1 + monthly_rate) + cf_late
-            
-df = pd.DataFrame(chart_data)
-df["Age"] = ages
-df = df.set_index("Age")
-
-st.line_chart(df, width=0, height=500, use_container_width=True, x_label="Age", y_label="Cumulative Wealth ($)")
-
-st.sidebar.divider()
-st.sidebar.caption("© 2026 Chung-Chieh Yu. All Rights Reserved.")
-st.sidebar.caption("💡 **Have questions or suggestions?** [Open an issue on GitHub](https://github.com/chungchiehyu-glitch/ss-sandbox/issues) to join the discussion.")
+st.subheader("Dynamic Joint Break-Even Analysis")
+st.altair_chart(chart, use_container_width=True)
