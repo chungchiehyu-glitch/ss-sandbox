@@ -33,7 +33,12 @@ if filing_status == "Married (Joint)":
     
     st.sidebar.subheader("Mortality & Survivor Settings")
     first_death_person = st.sidebar.selectbox("Who Passes Away First?", ["Primary Earner", "Spouse"])
-    age_of_first_death = st.sidebar.number_input("Age of Primary Earner at First Death", value=85, step=1)
+    
+    # Self-consistent dynamic label based on who passes away first
+    if first_death_person == "Primary Earner":
+        age_of_first_death = st.sidebar.number_input("Age of Primary Earner at First Death", value=85, step=1)
+    else:
+        age_of_first_death = st.sidebar.number_input("Age of Spouse at First Death", value=83, step=1)
 
 real_return = st.sidebar.number_input("Expected annual real return (%)", value=5.0, step=0.1) / 100
 
@@ -62,14 +67,12 @@ def get_monthly_benefit(pia, claim_age, fra=67):
 def calculate_joint_lifetime_wealth(p1_claim, p2_claim, pia_p1, pia_p2, age_diff, death_person, death_age):
     # Simulation horizon from age 60 to 100 for primary earner
     ages = np.arange(60, 101, 1/12)
-    wealth = 0
     portfolio_balance = 0
     
     p1_benefit_full = get_monthly_benefit(pia_p1, p1_claim)
     p2_benefit_full = get_monthly_benefit(pia_p2, p2_claim)
     
     # Widow's limit (RIB-LIM): If primary claims early (< FRA 67), survivor benefit is capped at reduced amount or 82.5% of PIA
-    fra_p1_benefit = get_monthly_benefit(pia_p1, 67)
     survivor_cap = max(p1_benefit_full, 0.825 * pia_p1) if p1_claim >= 67 else p1_benefit_full
     
     monthly_growth = (1 + real_return)**(1/12) - 1
@@ -84,14 +87,18 @@ def calculate_joint_lifetime_wealth(p1_claim, p2_claim, pia_p1, pia_p2, age_diff
         
         is_survivor_phase = False
         if filing_status == "Married (Joint)":
-            if death_person == "Primary Earner" and age >= death_age:
-                is_survivor_phase = True
-                p1_active = 0
-                # Surviving spouse steps up to the capped survivor benefit (or their own, whichever is higher)
-                p2_active = max(p2_active, survivor_cap)
-            elif death_person == "Spouse" and spouse_age >= death_age:
-                p2_active = 0 # Primary earner keeps their own benefit
-        
+            if death_person == "Primary Earner":
+                # death_age applies to Primary Earner
+                if age >= death_age:
+                    is_survivor_phase = True
+                    p1_active = 0
+                    p2_active = max(p2_active, survivor_cap)
+            else:
+                # death_age applies to Spouse
+                if spouse_age >= death_age:
+                    is_survivor_phase = True
+                    p2_active = 0  # Primary earner keeps their own benefit
+                    
         monthly_household_benefit = p1_active + p2_active
         
         # Apply 2032 Systemic Risk Cut if applicable
@@ -99,7 +106,7 @@ def calculate_joint_lifetime_wealth(p1_claim, p2_claim, pia_p1, pia_p2, age_diff
             monthly_household_benefit *= (1 - benefit_cut)
             
         # Tax application (Simulating bracket compression if in survivor phase)
-        effective_tax = t_base if not is_survivor_phase else (t_base * 1.35) # Compressed single bracket penalty proxy
+        effective_tax = t_base if not is_survivor_phase else (t_base * 1.35)
         after_tax_benefit = monthly_household_benefit * (1 - effective_tax)
         
         portfolio_balance = portfolio_balance * (1 + monthly_growth) + after_tax_benefit
