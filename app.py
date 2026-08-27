@@ -252,93 +252,79 @@ def run_simulation(is_joint, h_c1, l_c1, h_c2, l_c2, single_early, single_late, 
         return df_out, be_result
 
     else:
+        # Dynamic visible-window start: normally 60 (matching the original design), but if the
+        # earliest possible SS claim date -- translated into Lower-Age terms -- falls before 60
+        # (happens for very negative age_diff, i.e. a much older higher earner), extend the
+        # visible window a little earlier so that activity, and any real crossing, isn't hidden
+        # off-screen and misreported as "Escape Velocity" simply because the chart started too late.
+        earliest_claim_translated = min(h_c1, h_c2) + age_diff
+        visible_start_age = min(start_age, earliest_claim_translated - 1)
+
         max_lower_death_age = min(104, l_death)
         max_higher_death_age_equivalent = min(104, h_death + age_diff)
-        max_sim_lower_age = max(max_lower_death_age, max_higher_death_age_equivalent)
-        
-        ages = list(range(start_age, max_sim_lower_age + 1))
-        
+        max_sim_lower_age = max(max_lower_death_age, max_higher_death_age_equivalent, visible_start_age)
+
+        # The underlying computation always tracks from the higher earner's own age 60 --
+        # that's the "clock start" for the whole simulation, unaffected by age_diff.
+        h_temp_start = 60
+        h_temp_end = max_sim_lower_age - age_diff
+
         w_strat1, w_strat2 = 0.0, 0.0
-        h_start_age = start_age - age_diff
-
-        # Historical warmup loop before lower earner hits start_age (age 60)
-        if h_start_age > 60:
-            for h_temp in range(60, h_start_age):
-                l_temp = h_temp + age_diff
-                cut_t = insolvency_cut if h_temp >= cut_age else 0.0
-                
-                h_alive = h_temp < h_death
-                l_alive = l_temp < l_death
-                
-                if not h_alive and not l_alive:
-                    continue
-                
-                cf_s1_t = joint_net_cashflow(
-                    h_temp, l_temp, h_alive, l_alive, h_c1, l_c1, h_pia_val, l_pia_val,
-                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=True
-                ) * (1 - cut_t)
-
-                cf_s2_t = joint_net_cashflow(
-                    h_temp, l_temp, h_alive, l_alive, h_c2, l_c2, h_pia_val, l_pia_val,
-                    h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=False
-                ) * (1 - cut_t)
-                
-                for _ in range(12):
-                    w_strat1 = w_strat1 * (1 + monthly_rate) + cf_s1_t
-                    w_strat2 = w_strat2 * (1 + monthly_rate) + cf_s2_t
+        chart_rows = []
 
         # Crossing detection: track WHICH strategy currently leads (state-transition based),
         # not a calendar-age gate -- a fixed gate can always be outrun by an extreme enough
         # age gap (found via stress testing: a hardcoded +1yr gate, then even a 0yr gate,
         # both eventually missed a real crossing for a big enough |age_diff|).
-        # The lead as of the START of the visible window (age 60, after warmup) seeds
-        # "previously_ahead" -- this correctly carries forward whichever strategy was already
-        # ahead from the invisible pre-history, without ever reporting a crossing age below 60
-        # (age 60 is the leftmost point on the chart, so a "crossing" the user can't see on the
-        # graph would look like a bug, even though the underlying number would be correct).
-        previously_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
+        # "previously_ahead" is seeded the first time a row becomes visible (at visible_start_age),
+        # using whatever lead already exists from the invisible pre-history -- this correctly
+        # carries forward who was already ahead, without ever reporting a crossing age below the
+        # chart's own leftmost point (which would look like a bug even if the number were right).
+        previously_ahead = None
         be_result = "Escape Velocity 🚀"
         found_be = False
+        seeded = False
 
-        def _check_crossing(cur_age):
-            nonlocal previously_ahead, be_result, found_be
-            currently_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
-            if not found_be and currently_ahead is not None:
-                if previously_ahead is not None and currently_ahead != previously_ahead:
-                    be_result = cur_age
-                    found_be = True
-                previously_ahead = currently_ahead
+        for h_temp in range(h_temp_start, h_temp_end + 1):
+            l_temp = h_temp + age_diff
+            cut_t = insolvency_cut if h_temp >= cut_age else 0.0
 
-        chart_rows = []
-        
-        for l_age in ages:
-            chart_rows.append({"Lower Earner Age": l_age, label_early: w_strat1, label_late: w_strat2})
-            
-            h_age = l_age - age_diff
-            cut = insolvency_cut if h_age >= cut_age else 0.0
-            
-            h_alive = h_age < h_death
-            l_alive = l_age < l_death
-            
+            h_alive = h_temp < h_death
+            l_alive = l_temp < l_death
+
+            visible = l_temp >= visible_start_age
+
+            if visible:
+                if not seeded:
+                    previously_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
+                    seeded = True
+                chart_rows.append({"Lower Earner Age": l_temp, label_early: w_strat1, label_late: w_strat2})
+
             if not h_alive and not l_alive:
                 cf_s1, cf_s2 = 0.0, 0.0
             else:
                 net_s1 = joint_net_cashflow(
-                    h_age, l_age, h_alive, l_alive, h_c1, l_c1, h_pia_val, l_pia_val,
+                    h_temp, l_temp, h_alive, l_alive, h_c1, l_c1, h_pia_val, l_pia_val,
                     h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=True
                 )
                 net_s2 = joint_net_cashflow(
-                    h_age, l_age, h_alive, l_alive, h_c2, l_c2, h_pia_val, l_pia_val,
+                    h_temp, l_temp, h_alive, l_alive, h_c2, l_c2, h_pia_val, l_pia_val,
                     h_c1, l_c1, h_pia_val, l_pia_val, t_62, t_gap, is_baseline_strategy=False
                 )
-                cf_s1 = net_s1 * (1 - cut)
-                cf_s2 = net_s2 * (1 - cut)
-            
+                cf_s1 = net_s1 * (1 - cut_t)
+                cf_s2 = net_s2 * (1 - cut_t)
+
             for m in range(1, 13):
                 w_strat1 = w_strat1 * (1 + monthly_rate) + cf_s1
                 w_strat2 = w_strat2 * (1 + monthly_rate) + cf_s2
-                _check_crossing(l_age + (m / 12))
-                    
+                if visible:
+                    currently_ahead = "S1" if w_strat1 > w_strat2 else ("S2" if w_strat2 > w_strat1 else None)
+                    if not found_be and currently_ahead is not None:
+                        if previously_ahead is not None and currently_ahead != previously_ahead:
+                            be_result = l_temp + m / 12
+                            found_be = True
+                        previously_ahead = currently_ahead
+
         df_out = pd.DataFrame(chart_rows).set_index("Lower Earner Age")
         return df_out, be_result
 
