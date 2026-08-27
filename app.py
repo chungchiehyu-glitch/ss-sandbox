@@ -16,13 +16,13 @@ if filing_status == "Single":
     claim_age_1 = st.sidebar.slider("Claim Age Strategy 1", 62, 70, 62)
     claim_age_2 = st.sidebar.slider("Claim Age Strategy 2", 62, 70, 67)
 else:
-    st.sidebar.subheader("Primary (Higher) Earner Strategy")
-    p1_claim_1 = st.sidebar.slider("Primary Claim Strategy 1", 62, 70, 62)
-    p1_claim_2 = st.sidebar.slider("Primary Claim Strategy 2", 62, 70, 70)
+    st.sidebar.subheader("Strategy 1 (Baseline)")
+    p1_claim_1 = st.sidebar.slider("Primary Claim (Strategy 1)", 62, 70, 62)
+    p2_claim_1 = st.sidebar.slider("Spouse Claim (Strategy 1)", 62, 70, 62)
     
-    st.sidebar.subheader("Spouse (Lower) Earner Strategy")
-    p2_claim_1 = st.sidebar.slider("Spouse Claim Strategy 1", 62, 70, 62)
-    p2_claim_2 = st.sidebar.slider("Spouse Claim Strategy 2", 62, 70, 67)
+    st.sidebar.subheader("Strategy 2 (Comparison)")
+    p1_claim_2 = st.sidebar.slider("Primary Claim (Strategy 2)", 62, 70, 70)
+    p2_claim_2 = st.sidebar.slider("Spouse Claim (Strategy 2)", 62, 70, 67)
 
 st.sidebar.header("Model Assumptions")
 pia_1 = st.sidebar.number_input("Primary PIA ($/mo)", value=2500, step=100)
@@ -88,13 +88,11 @@ def calculate_joint_lifetime_wealth(p1_claim, p2_claim, pia_p1, pia_p2, age_diff
         is_survivor_phase = False
         if filing_status == "Married (Joint)":
             if death_person == "Primary Earner":
-                # death_age applies to Primary Earner
                 if age >= death_age:
                     is_survivor_phase = True
                     p1_active = 0
                     p2_active = max(p2_active, survivor_cap)
             else:
-                # death_age applies to Spouse
                 if spouse_age >= death_age:
                     is_survivor_phase = True
                     p2_active = 0  # Primary earner keeps their own benefit
