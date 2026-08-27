@@ -49,7 +49,7 @@ roth_mode = st.sidebar.toggle("Investments held in Roth IRA (Tax-Free)", value=T
 
 st.sidebar.header("Systemic Risk (Insolvency 2032)")
 benefit_cut = st.sidebar.number_input("Projected Benefit Cut (%)", value=11.0, step=1.0) / 100
-cut_age = st.sidebar.number_input("Age Cut Takes Effect", value=69, step=1)
+cut_age = st.sidebar.number_input("Primary Age Cut Takes Effect", value=69, step=1)
 
 # --- BENEFIT & WIDOW'S LIMIT CALCULATION LOGIC ---
 def get_monthly_benefit(pia, claim_age, fra=67):
