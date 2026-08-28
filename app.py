@@ -5,9 +5,9 @@ import altair as alt
 st.set_page_config(page_title="SS Compounding Sandbox", layout="wide")
 st.title("Social Security Break-Even Sandbox")
 st.write("Dynamic break-even analysis incorporating opportunity cost, marginal taxation, and systemic risk.")
+st.info("📱 On a phone? Tap the **\">\"** arrow in the top-left corner to open the input panel and set your claiming ages, PIA, and other assumptions.")
 
 # --- Interactive Sidebar Controls ---
-st.sidebar.info("👈 Adjust the sliders below to compare two Social Security claiming strategies.")
 filing_status = st.sidebar.radio("Filing Status", ["Single", "Married (Joint)"], key="filing_status_radio")
 
 # --- DYNAMIC INSTRUCTIONS EXPANDER ---
