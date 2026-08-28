@@ -7,6 +7,7 @@ st.title("Social Security Break-Even Sandbox")
 st.write("Dynamic break-even analysis incorporating opportunity cost, marginal taxation, and systemic risk.")
 
 # --- Interactive Sidebar Controls ---
+st.sidebar.info("👈 Adjust the sliders below to compare two Social Security claiming strategies.")
 filing_status = st.sidebar.radio("Filing Status", ["Single", "Married (Joint)"], key="filing_status_radio")
 
 # --- DYNAMIC INSTRUCTIONS EXPANDER ---
