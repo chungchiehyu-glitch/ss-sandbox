@@ -104,9 +104,15 @@ roi = roi_display / 100
 
 st.sidebar.divider()
 st.sidebar.header("Tax Assumptions")
-t_62_display = st.sidebar.slider("T_base: Tax on Base Early Benefit (%)", 0.0, 40.0, 0.0, 1.0, key="t_base_slider")
+t_62_display = st.sidebar.slider(
+    "T_base: Tax on Base Early Benefit (%)", 0.0, 40.0, 0.0, 1.0, key="t_base_slider",
+    help="Your marginal tax rate on the 'base' benefit -- the amount you'd get by claiming at your early/baseline age. This is the tax rate applied to Strategy 1's benefit."
+)
 default_t_gap = max(22.0, t_62_display)
-t_gap_display = st.sidebar.slider("T_gap: Tax on Extra Benefit (The Gap) (%)", min_value=t_62_display, max_value=40.0, value=default_t_gap, step=1.0, key="t_gap_slider")
+t_gap_display = st.sidebar.slider(
+    "T_gap: Tax on Extra Benefit (The Gap) (%)", min_value=t_62_display, max_value=40.0, value=default_t_gap, step=1.0, key="t_gap_slider",
+    help="Your marginal tax rate on just the EXTRA amount a delayed claim adds on top of the base benefit (i.e., the 'gap' between claiming early vs. later). This can be higher than T_base if that extra income pushes you into a higher bracket or triggers more Social Security taxation ('tax torpedo')."
+)
 
 t_62 = t_62_display / 100
 t_gap = t_gap_display / 100
