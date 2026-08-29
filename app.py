@@ -72,7 +72,10 @@ if filing_status == "Married (Joint)":
     default_lower_pia = min(1200, max_lower_pia)
     
     l_pia = st.sidebar.slider("Lower Earner PIA", 0, max_lower_pia, default_lower_pia, 50, key="pia_lower_val")
-    earner_age_diff = st.sidebar.slider("Lower Earner Age Difference (Lower Age - Higher Age)", -25, 25, 0, 1, key="earner_age_diff_val")
+    earner_age_diff = st.sidebar.slider(
+    "Age Gap: Lower Earner minus Higher Earner (years)", -25, 25, 0, 1, key="earner_age_diff_val",
+    help="Negative = the Lower Earner is YOUNGER than the Higher Earner. Positive = the Lower Earner is OLDER. Zero = same age. ('Lower'/'Higher' refers to who has the bigger PIA, not who's older.)"
+    )
     
     st.sidebar.subheader("Survivor & Mortality")
     h_death_age = st.sidebar.slider("Higher Earner Age at Death", 70, 104, 85, 1, key="h_death_age_val")
